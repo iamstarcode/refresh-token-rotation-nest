@@ -309,25 +309,4 @@ export class AuthService {
       );
     }
   }
-
-  async signToken(
-    userId: number,
-    email: string,
-  ): Promise<{ access_token: string }> {
-    const payload = {
-      sub: userId,
-      email,
-    };
-
-    const secret = this.configService.get('JWT_SECRETE');
-
-    const token = await this.jwtService.signAsync(payload, {
-      expiresIn: '15m',
-      secret: secret,
-    });
-
-    return {
-      access_token: token,
-    };
-  }
 }
