@@ -6,6 +6,7 @@ import JwtRefreshGuard from 'src/auth/guard/jwt-refresh.guard';
 import { GetUser } from '../auth/decorator/get-user.decorator';
 import { JwtAuthGuard } from '../auth/guard/jwt.guard';
 import { UserService } from './user.service';
+import * as dayjs from 'dayjs'
 
 @Controller('user')
 export class UserController {
@@ -14,8 +15,8 @@ export class UserController {
   @UseGuards(JwtAuthGuard)
   @Get('me')
   getMe(@GetUser() user: User) {
-    console.log(user);
-    return 'user me';
+    //console.log(dayjs( Date.now()).format('m:s'));
+    return 'user me @ ' + dayjs( Date.now()).format('m:s');
   }
 
   @Get('send-mail')

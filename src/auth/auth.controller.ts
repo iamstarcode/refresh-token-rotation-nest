@@ -8,7 +8,6 @@ import {
   Req,
   Res,
   UseGuards,
-  ValidationPipe,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { AuthDto } from './dto/auth.dto';
@@ -17,14 +16,18 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import * as argon from 'argon2';
 import { Response } from 'express';
 import JwtRefreshGuard from './guard/jwt-refresh.guard';
-import { GoogleAuthGuard } from './guard/google.guard';
 import { AuthProviderDto } from './dto/auth-provider.dto';
+import { JwtAuthGuard } from './guard/jwt.guard';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly prismaService: PrismaService,
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
   ) {}
 
   //@UseGuards(LocalAuthenticationGuard)
@@ -69,7 +72,9 @@ export class AuthController {
         id: user.id,
       },
       data: {
-        currentHashedRefreshToken,
+        refreshTokens: {
+          push: currentHashedRefreshToken,
+        },
       },
     });
     request.res.setHeader('Set-Cookie', [
@@ -88,7 +93,7 @@ export class AuthController {
 
   @Post('sign-up')
   signup(@Body() dto: AuthDto) {
-    return this.authService.signup(dto);
+    return this.authService.signUp(dto);
   }
 
   @Post('sign-in')
@@ -100,8 +105,49 @@ export class AuthController {
   @Post('sign-in-with-oauth')
   async signInwithSocial(@Body() dto: AuthProviderDto) {
     const user = await this.authService.signInWithOAuth(dto);
-    return await this.authService.handeleSigin(user)
-    
+    return await this.authService.handeleSigin(user);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('sign-out')
+  @HttpCode(200)
+  async logOut(@Req() request: IRequestWithUser, @Body() body) {
+    //await this.authService.removeRefreshToken(request.user.id);
+    const refreshToken = body.refreshToken;
+    try {
+      const decoded = await this.jwtService.verifyAsync(refreshToken, {
+        secret: this.configService.get('JWT_REFRESH_TOKEN_SECRET'),
+      });
+
+      //console.log(decoded)
+      const user = await this.authService.getById(decoded.sub);
+      let refrestokenMatches = false;
+      let index = 0;
+
+      for (let i = 0; i < user.refreshTokens.length; i++) {
+        refrestokenMatches = await argon.verify(
+          user.refreshTokens[i],
+          refreshToken,
+        );
+
+        if (refrestokenMatches == true) {
+          index = i;
+          break;
+        }
+      }
+      const newRefreshTokens = user.refreshTokens.filter(
+        (rt) => rt !== user.refreshTokens[index],
+      );
+
+      console.log(newRefreshTokens);
+      this.authService.updateRefreshToken(user.id, [...newRefreshTokens]);
+
+      // console.log(decoded);
+    } catch (error) {
+      console.log(error);
+    }
+
+    //request.res.setHeader('Set-Cookie', this.authenticationService.getCookiesForLogOut());
   }
 
   @UseGuards(JwtRefreshGuard)

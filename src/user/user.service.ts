@@ -51,7 +51,9 @@ export class UserService {
         id: userId,
       },
       data: {
-        currentHashedRefreshToken,
+        refreshTokens:{
+          
+        }
       },
     });
   }

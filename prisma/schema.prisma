@@ -7,7 +7,9 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  //url      = env("DATABASE_URL")
+  url ="postgres://fzgacfhwunpyqs:805f72233b2137976981addc6e4345a8abf351451b6080e11cf37f8ea09ecf0a@ec2-3-219-229-143.compute-1.amazonaws.com:5432/dbsvi97m6ls9nc"
+
 }
 
 model User {
@@ -16,7 +18,8 @@ model User {
   password                         String?
   bookmark                         BookMark[]
   provider                         Provider[]
-  currentHashedRefreshToken        String?
+  //token                            Token[]
+  refreshTokens                    String[]
   isTwoFactorAuthenticationEnabled String?
   firstName                        String?
   lastName                         String?
@@ -25,6 +28,21 @@ model User {
 
   @@map("users")
 }
+
+// model Token {
+//   id String @id @default(uuid())
+
+//   //user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+//   userId Int
+
+//   refreshToken String
+//   family       String   @unique
+//   browserInfo  String? // Show the user logged devices 
+//   expiresAt    DateTime
+//   createdAt    DateTime @default(now())
+//   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+//   @@map("tokens")
+// }
 
 model Provider {
   id            Int      @id @default(autoincrement())
