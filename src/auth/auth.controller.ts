@@ -32,6 +32,11 @@ export class AuthController {
 
   //@UseGuards(LocalAuthenticationGuard)
   //@ApiBody({ type: LogInDto })
+  @Get('v')
+  async v() {
+    return 'v'
+  }
+
   @HttpCode(200)
   @Post('log-in')
   async logIn(
