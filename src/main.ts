@@ -11,7 +11,8 @@ async function bootstrap() {
     'http://127.0.0.1:5500',
     'http://localhost:3500',
     'http://localhost:3000',
-    'http://localhost:19006'
+    'http://localhost:19006',
+    'https://melodic-kitten-c0528c.netlify.app'
   ];
   const app = await NestFactory.create(AppModule);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
