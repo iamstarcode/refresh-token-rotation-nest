@@ -2,8 +2,8 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import * as csurf from 'csurf';
-var cookieParser = require('cookie-parser')
-
+import { env } from 'process';
+var cookieParser = require('cookie-parser');
 
 async function bootstrap() {
   const allowedOrigins = [
@@ -12,12 +12,12 @@ async function bootstrap() {
     'http://localhost:3500',
     'http://localhost:3000',
     'http://localhost:19006',
-    'https://melodic-kitten-c0528c.netlify.app'
+    'https://melodic-kitten-c0528c.netlify.app',
   ];
   const app = await NestFactory.create(AppModule);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
   //Cookie Parser
-  app.use(cookieParser())
+  app.use(cookieParser());
   //CORS
   app.enableCors({
     origin: (origin, callback) => {
@@ -31,11 +31,11 @@ async function bootstrap() {
     credentials: true,
   });
   //CSRF Protection
- /*  app.use(csurf({cookie:true}));
+  /*  app.use(csurf({cookie:true}));
   app.use('/csrf',(req,res)=>{
     return res.send(req.csrfToken())
   }) */
-  
-  await app.listen(8000);
+
+  await app.listen(process.env.PORT || 8000);
 }
 bootstrap();
