@@ -4,6 +4,8 @@ import {
   ForbiddenException,
   Get,
   HttpCode,
+  HttpException,
+  HttpStatus,
   Post,
   Req,
   Res,
@@ -14,27 +16,26 @@ import { AuthDto } from './dto/auth.dto';
 import { IRequestWithUser } from './interfaces/IRequestWithUser';
 import { PrismaService } from 'src/prisma/prisma.service';
 import * as argon from 'argon2';
-import { Response } from 'express';
+import { Response, Request } from 'express';
 import JwtRefreshGuard from './guard/jwt-refresh.guard';
 import { AuthProviderDto } from './dto/auth-provider.dto';
 import { JwtAuthGuard } from './guard/jwt.guard';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { UAParser } from 'ua-parser-js';
 
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly prismaService: PrismaService,
-    private readonly jwtService: JwtService,
-    private readonly configService: ConfigService,
   ) {}
 
   //@UseGuards(LocalAuthenticationGuard)
   //@ApiBody({ type: LogInDto })
   @Get('v')
   async v() {
-    return 'v'
+    return 'v';
   }
 
   @HttpCode(200)
@@ -96,68 +97,45 @@ export class AuthController {
     return { accesToken };
   }
 
-  @Post('sign-up')
-  signup(@Body() dto: AuthDto) {
-    return this.authService.signUp(dto);
+  @Post('sign-up') 
+  signup(@Body() dto: AuthDto, @Req() request: Request) {
+    return this.authService.signUp(dto, request);
   }
 
   @Post('sign-in')
-  async signIn(@Body() dto: AuthDto) {
-    const tokens = await this.authService.signIn(dto);
+  async signIn(@Body() dto: AuthDto, @Req() request: Request) {
+    const tokens = await this.authService.signIn(dto, request);
     return tokens;
   }
 
   @Post('sign-in-with-oauth')
-  async signInwithSocial(@Body() dto: AuthProviderDto) {
+  async signInwithSocial(
+    @Body() dto: AuthProviderDto,
+    @Req() request: Request,
+  ) {
     const user = await this.authService.signInWithOAuth(dto);
-    return await this.authService.handeleSigin(user);
+    return await this.authService.handeleSigin(user, request);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('sign-out')
   @HttpCode(200)
-  async logOut(@Req() request: IRequestWithUser, @Body() body) {
-    //await this.authService.removeRefreshToken(request.user.id);
-    const refreshToken = body.refreshToken;
+  async signOut(@Req() request: IRequestWithUser) {
+    const tokenId = request.header('Token-Id');
     try {
-      const decoded = await this.jwtService.verifyAsync(refreshToken, {
-        secret: this.configService.get('JWT_REFRESH_TOKEN_SECRET'),
+      await this.prismaService.token.delete({
+        where: {
+          id: tokenId,
+        },
       });
-
-      //console.log(decoded)
-      const user = await this.authService.getById(decoded.sub);
-      let refrestokenMatches = false;
-      let index = 0;
-
-      for (let i = 0; i < user.refreshTokens.length; i++) {
-        refrestokenMatches = await argon.verify(
-          user.refreshTokens[i],
-          refreshToken,
-        );
-
-        if (refrestokenMatches == true) {
-          index = i;
-          break;
-        }
-      }
-      const newRefreshTokens = user.refreshTokens.filter(
-        (rt) => rt !== user.refreshTokens[index],
-      );
-
-      console.log(newRefreshTokens);
-      this.authService.updateRefreshToken(user.id, [...newRefreshTokens]);
-
-      // console.log(decoded);
     } catch (error) {
-      console.log(error);
+      throw new HttpException('Bad Request', HttpStatus.BAD_REQUEST);
     }
-
-    //request.res.setHeader('Set-Cookie', this.authenticationService.getCookiesForLogOut());
   }
 
   @UseGuards(JwtRefreshGuard)
   @Get('refresh')
-  async refresh(@Req() request) {
+  async refresh(@Req() request: IRequestWithUser) {
     //console.log(request.user)
     //request.res.setHeader('Set-Cookie', accessToken); next-auth creates cookie no nned here
     return request.user;

@@ -15,19 +15,18 @@ export class JwtRefreshTokenStrategy extends PassportStrategy(
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       secretOrKey: configService.get('JWT_REFRESH_TOKEN_SECRET'),
-      ignoreExpiration:true,
+      ignoreExpiration: true,
       passReqToCallback: true,
-
     });
   }
 
   async validate(request: Request, payload: ITokenPayload) {
     const refreshToken = request.header('Authorization').split(' ')[1];
-    //console.log('in jwt'+' '+refreshToken,payload.sub)
-    //find if this refresh token is in the array of user data
-    //
-    return this.authService.getUserIfRefreshTokenMatches(
+    const tokenId = request.header('Token-Id');
+
+    return this.authService.getUserIfRefreshTokenMatches3(
       refreshToken,
+      tokenId,
       payload.sub,
     );
   }

@@ -16,13 +16,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any) {
-    // console.log(payload)
-    //if it decodes succesfully then we return user no database checking here
-    //but if it fails nko, we then get refresh token from database and compare with the cookie one
-    //if it matches we return use and update
-    //console.log(payload)
-    //return null
-
     return { userId: payload.sub, email: payload.email };
   }
 }

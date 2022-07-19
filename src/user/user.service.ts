@@ -78,7 +78,5 @@ export class UserService {
       .catch((err) => {
         console.log(err);
       });
-  }
-
-  public 
+  } 
 }

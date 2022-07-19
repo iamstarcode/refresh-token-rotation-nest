@@ -1,0 +1,17 @@
+services:
+  db:
+    image: postgres
+    ports:
+      - 5432:5432
+    restart: always
+    environment:
+      POSTGRES_DB: nest
+      POSTRGRES_USER: root
+      POSTGRES_PASSWORD: root
+  cache:
+    image: redis
+    restart: always
+    ports:
+      - '6379:6379'
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes

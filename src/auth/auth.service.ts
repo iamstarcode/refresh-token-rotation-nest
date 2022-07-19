@@ -15,11 +15,21 @@ import { ConfigService } from '@nestjs/config';
 import { ITokenPayload } from './interfaces/ITokenPayload';
 import { AuthProviderDto } from './dto/auth-provider.dto';
 
+import * as dayjs from 'dayjs';
+
 import { User } from '.prisma/client';
+import { userInfo } from 'os';
+import { Request, request } from 'express';
+import {UAParser} from 'ua-parser-js';
 
 const JWT_ACCESS_TOKEN_EXPIRATION_TIME = '5s';
 const JWT_REFRESH_TOKEN_EXPIRATION_TIME = '1d';
-const ACCESS_TOKEN_EXPIRY = 5 * 1000;
+const ACCESS_TOKEN_EXPIRY = 5;
+const REFRESH_TOKEN_EXPIRY = 1; //24 * 60 * 60 * 1000;
+
+const getAccessExpiry = () => dayjs().add(5, 's').toDate();
+const getRefreshExpiry = () => dayjs().add(1, 'd').toDate();
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -28,43 +38,45 @@ export class AuthService {
     private configService: ConfigService,
   ) {}
 
-  async handeleSigin(user: User) {
+  async handeleSigin(user: User, request: Request) {
+   
     const { refreshToken } = await this.getJwtRefreshToken(
       user.id,
       user?.email,
     );
     const { accessToken } = await this.getJwtAccessToken(user.id, user?.email);
 
-    const hashed = await argon.hash(refreshToken);
-
     try {
-      user.refreshTokens.push(hashed);
-      await this.prismaService.user.update({
-        where: {
-          id: user.id,
-        },
+      const hash = await argon.hash(refreshToken);
+      const token = await this.prismaService.token.create({
         data: {
-          refreshTokens: user.refreshTokens,
+          expiresAt: getRefreshExpiry(),
+          refreshToken: hash,
+          browserInfo:"",
+          user: {
+            connect: {
+              id: user.id,
+            },
+          },
         },
       });
 
-      console.log(user.refreshTokens);
+      return {
+        accessToken,
+        refreshToken,
+        tokenId: token.id,
+        accessTokenExpires: getAccessExpiry(),
+        user: {
+          id: user.id,
+          email: user.email,
+        },
+      };
     } catch (error) {
       console.log(error);
     }
-
-    return {
-      accessToken,
-      refreshToken,
-      accessTokenExpires: Date.now() + ACCESS_TOKEN_EXPIRY,
-      user: {
-        id: user.id,
-        email: user.email,
-      },
-    };
   }
 
-  async signUp(dto: AuthDto) {
+  async signUp(dto: AuthDto, request: Request) {
     const password = await argon.hash(dto.password);
     try {
       const user = await this.prismaService.user.create({
@@ -74,7 +86,7 @@ export class AuthService {
         },
       });
 
-      return await this.handeleSigin(user);
+      return await this.handeleSigin(user, request);
     } catch (err) {
       if (err instanceof PrismaClientKnownRequestError) {
         if (err.code === 'P2002') {
@@ -85,9 +97,8 @@ export class AuthService {
     }
   }
 
-  async signIn(dto: AuthDto) {
+  async signIn(dto: AuthDto, request: Request) {
     //find a user
-    // await return this.handeleSigin(user)
     const user = await this.prismaService.user.findUnique({
       where: {
         email: dto.email,
@@ -113,7 +124,8 @@ export class AuthService {
       throw new ForbiddenException('Credentilas incorrect');
     }
 
-    return await this.handeleSigin(user);
+    console.log(request.headers)
+    return await this.handeleSigin(user, request);
   }
 
   async signInWithOAuth(dto: AuthProviderDto) {
@@ -200,91 +212,590 @@ export class AuthService {
   async getUserIfRefreshTokenMatches(refreshToken: string, userId: number) {
     const user = await this.getById(userId);
 
-    //let foundUser: User = null;
-    //console.log(user.refreshTokens[1])
-    //console.log(await argon.verify(user.refreshTokens[1],refreshToken))
+    const foundUser = await this.prismaService.user.findFirst({
+      where: {
+        refreshTokens: {
+          has: refreshToken,
+        },
+      },
+    });
 
-    let refrestokenMatches = false;
-    let index = 0;
-    for (let i = 0; i < user.refreshTokens.length; i++) {
-      console.log(i);
-      refrestokenMatches = await argon.verify(
-        user.refreshTokens[i],
-        refreshToken,
-      );
-      if (refrestokenMatches === true) {
-        console.log(user.refreshTokens[i]);
-        index = i;
-        break;
-      }
-    }
-
-    if (!refrestokenMatches) {
+    if (!foundUser) {
       //refresh token is valid but not in db
       //re-use detection possible!!! delete all refresh tokens
       try {
-        const decoded = await this.jwtService.verifyAsync(refreshToken, {
+        const decoded = this.jwtService.verify(refreshToken, {
           secret: this.configService.get('JWT_REFRESH_TOKEN_SECRET'),
         });
-        //console.debug('grtjf');
-        console.log('still valid but not in db');
-        this.updateRefreshToken(user.id, []);
+        //Probably a resused token here, flag as a hacked user
+        const compromisedUser = await this.prismaService.user.findUnique({
+          where: {
+            id: decoded.sub,
+          },
+        });
+        await this.updateRefreshToken(compromisedUser.id, []);
       } catch (error) {
         // valid but expired or not decodeable
-        console.log('reason ', error);
-        throw new HttpException('Unauthorised', HttpStatus.UNAUTHORIZED);
+        console.log('', error);
+        throw new HttpException(
+          'Unauthorised valid but either expired or other reason ',
+          HttpStatus.UNAUTHORIZED,
+        );
       }
 
-      throw new HttpException('Unauthorised', HttpStatus.UNAUTHORIZED);
+      throw new HttpException('Unauthorised', HttpStatus.FORBIDDEN);
     }
 
-    //we found an, then we issue a new refreshToken and  accesstoken here
-    const newRefreshTokens = user.refreshTokens.filter((rt) => {
-      //  const isMatch = argon.verify(rt, user.refreshTokens[index]);
-      //console.log(rt, '\n', user.refreshTokens[index])
-      //console.log( rt !== user.refreshTokens[index])
-      return rt !== user.refreshTokens[index];
-    });
+    //Token is valid and still in db , here we then remove from db and send new pairs of RF and AT
 
-    // delete user.refreshTokens.
+    //We then filter out the current RT
+    const newRefreshTokens = foundUser.refreshTokens.filter(
+      (rt) => rt !== refreshToken,
+    );
 
-    //console.log('deleted', newRefreshTokens);
-    //chech if token as expired
-    //jwt.verify(user.refreshTokens[index], this.configService.get('JWT_REFRESH_TOKEN_SECRET'))
+    //check if token as expired
     try {
       const decoded = await this.jwtService.verifyAsync(refreshToken, {
         secret: this.configService.get('JWT_REFRESH_TOKEN_SECRET'),
       });
 
+      //Here RT is still valid we can go ahead to send new pairs of Tokens
+      const { accessToken } = await this.getJwtAccessToken(
+        foundUser.id,
+        foundUser.email,
+      );
+      const { refreshToken: newRefreshToken } = await this.getJwtRefreshToken(
+        foundUser.id,
+        foundUser?.email,
+      );
+      this.updateRefreshToken(foundUser.id, [
+        ...newRefreshTokens,
+        newRefreshToken,
+      ]);
+
+      return {
+        accessToken,
+        refreshToken: newRefreshToken,
+        accessTokenExpires: ACCESS_TOKEN_EXPIRY,
+        user: {
+          id: foundUser.id,
+          email: foundUser.email,
+        },
+      };
+    } catch (error) {
+      //expired RT, we can log out the user
+      this.updateRefreshToken(foundUser.id, [...newRefreshTokens]);
+
+      throw new HttpException('Unauthorised', HttpStatus.UNAUTHORIZED);
+    }
+  }
+
+  async getUserIfRefreshTokenMatches0(refreshToken: string, userId: number) {
+    //const user = await this.getById(userId);
+    const foundUser = await this.prismaService.user.findFirst({
+      where: {
+        refreshTokens: {
+          has: refreshToken,
+        },
+      },
+    });
+
+    if (!foundUser) {
+      //refresh token is valid but not in db
+      //re-use detection possible!!! delete all refresh tokens
+      try {
+        const decoded = this.jwtService.verify(refreshToken, {
+          secret: this.configService.get('JWT_REFRESH_TOKEN_SECRET'),
+        });
+
+        const issuedAt = dayjs.unix(decoded.iat);
+
+        const diff = dayjs().diff(issuedAt, 'seconds');
+
+        if (diff < 30) {
+          /*  const newRefreshTokens = foundUser.refreshTokens.filter(
+            (rt) => rt !== refreshToken,
+          ); */
+
+          const { accessToken } = await this.getJwtAccessToken(
+            decoded.id,
+            decoded.email,
+          );
+          const {
+            refreshToken: newRefreshToken,
+          } = await this.getJwtRefreshToken(decoded.id, decoded.email);
+          /*  this.updateRefreshToken(foundUser.id, [
+            ...newRefreshTokens,
+            newRefreshToken,
+          ]); */
+
+          this.prismaService.user.update({
+            where: {
+              id: decoded.sub,
+            },
+            data: {
+              refreshTokens: {
+                push: newRefreshToken,
+              },
+            },
+          });
+
+          return {
+            accessToken,
+            refreshToken: newRefreshToken,
+            accessTokenExpires: ACCESS_TOKEN_EXPIRY,
+            user: {
+              id: decoded.id,
+              email: decoded.email,
+            },
+          };
+        }
+
+        //Probably a resused token here, flag as a hacked user
+        const compromisedUser = await this.prismaService.user.findUnique({
+          where: {
+            id: decoded.sub,
+          },
+        });
+        await this.updateRefreshToken(compromisedUser.id, []);
+      } catch (error) {
+        // valid but expired or not decodeable
+        console.log('', error);
+        throw new HttpException(
+          'Unauthorised valid but either expired or other reason ',
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+
+      throw new HttpException('Unauthorised', HttpStatus.FORBIDDEN);
+    }
+
+    //Token is valid and still in db , here we then remove from db and send new pairs of RF and AT
+
+    //We then filter out the current RT
+    const newRefreshTokens = foundUser.refreshTokens.filter(
+      (rt) => rt !== refreshToken,
+    );
+
+    //check if token as expired
+    try {
+      const decoded = await this.jwtService.verifyAsync(refreshToken, {
+        secret: this.configService.get('JWT_REFRESH_TOKEN_SECRET'),
+      });
+
+      //Here RT is still valid we can go ahead to send new pairs of Tokens
+      const { accessToken } = await this.getJwtAccessToken(
+        foundUser.id,
+        foundUser.email,
+      );
+      const { refreshToken: newRefreshToken } = await this.getJwtRefreshToken(
+        foundUser.id,
+        foundUser?.email,
+      );
+      this.updateRefreshToken(foundUser.id, [
+        ...newRefreshTokens,
+        newRefreshToken,
+      ]);
+
+      return {
+        accessToken,
+        refreshToken: newRefreshToken,
+        accessTokenExpires: ACCESS_TOKEN_EXPIRY,
+        user: {
+          id: foundUser.id,
+          email: foundUser.email,
+        },
+      };
+    } catch (error) {
+      //expired RT, we can log out the user
+      this.updateRefreshToken(foundUser.id, [...newRefreshTokens]);
+
+      throw new HttpException('Unauthorised', HttpStatus.UNAUTHORIZED);
+    }
+  }
+
+  //with distribution lock
+  async getUserIfRefreshTokenMatches2(refreshToken: string, userId: number) {
+    //const user = await this.getById(userId);
+    const foundUser = await this.prismaService.user.findFirst({
+      where: {
+        refreshTokens: {
+          has: refreshToken,
+        },
+      },
+    });
+
+    if (!foundUser) {
+      //refresh token is valid but not in db
+      //re-use detection possible!!! delete all refresh tokens
+      try {
+        const decoded = this.jwtService.verify(refreshToken, {
+          secret: this.configService.get('JWT_REFRESH_TOKEN_SECRET'),
+        });
+        //Probably a resused token here, flag as a hacked user
+        const compromisedUser = await this.prismaService.user.findUnique({
+          where: {
+            id: decoded.sub,
+          },
+        });
+        await this.updateRefreshToken(compromisedUser.id, []);
+      } catch (error) {
+        // valid but expired or not decodeable
+        console.log('', error);
+        throw new HttpException(
+          'Unauthorised valid but either expired or other reason ',
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+
+      throw new HttpException('Unauthorised', HttpStatus.FORBIDDEN);
+    }
+
+    //Token is valid and still in db , here we then remove from db and send new pairs of RF and AT
+
+    //We then filter out the current RT
+    const newRefreshTokens = foundUser.refreshTokens.filter(
+      (rt) => rt !== refreshToken,
+    );
+
+    //check if token as expired
+    try {
+      const decoded = await this.jwtService.verifyAsync(refreshToken, {
+        secret: this.configService.get('JWT_REFRESH_TOKEN_SECRET'),
+      });
+
+      //Here RT is still valid we can go ahead to send new pairs of Tokens
+      const { accessToken } = await this.getJwtAccessToken(
+        foundUser.id,
+        foundUser.email,
+      );
+      const { refreshToken: newRefreshToken } = await this.getJwtRefreshToken(
+        foundUser.id,
+        foundUser?.email,
+      );
+      this.updateRefreshToken(foundUser.id, [
+        ...newRefreshTokens,
+        newRefreshToken,
+      ]);
+
+      return {
+        accessToken,
+        refreshToken: newRefreshToken,
+        accessTokenExpires: ACCESS_TOKEN_EXPIRY,
+        user: {
+          id: foundUser.id,
+          email: foundUser.email,
+        },
+      };
+    } catch (error) {
+      //expired RT, we can log out the user
+      this.updateRefreshToken(foundUser.id, [...newRefreshTokens]);
+
+      throw new HttpException('Unauthorised', HttpStatus.UNAUTHORIZED);
+    }
+  }
+
+  async getUserIfRefreshTokenMatches3(
+    refreshToken: string,
+    tokenId: string,
+    userId: number,
+  ) {
+    const user = await this.getById(userId);
+    const foundToken = await this.prismaService.token.findUnique({
+      where: {
+        id: tokenId,
+      },
+    });
+
+
+    const isMatch = await argon.verify(foundToken.refreshToken, refreshToken);
+
+    if (!isMatch) {
+      //refresh token is valid but not in db
+      //re-use detection possible!!! delete all refresh tokens
+      try {
+        const decoded = this.jwtService.verify(refreshToken, {
+          secret: this.configService.get('JWT_REFRESH_TOKEN_SECRET'),
+        });
+
+        //console.log('re use detected'); Re use detected or race condition
+
+        const issuedAt = dayjs.unix(decoded.iat);
+        const diff = dayjs().diff(issuedAt, 'seconds');
+
+        console.log(diff);
+
+        if (diff < 60 * 1 * 2) {
+          //2 minute leeway allows refresh
+          const { accessToken } = await this.getJwtAccessToken(
+            user.id,
+            user.email,
+          );
+          const {
+            refreshToken: newRefreshToken,
+          } = await this.getJwtRefreshToken(user.id, user?.email);
+
+          const hash = await argon.hash(newRefreshToken);
+          await this.prismaService.user.update({
+            where: {
+              id: user.id,
+            },
+            data: {
+              token: {
+                update: {
+                  where: {
+                    id: foundToken.id,
+                  },
+                  data: {
+                    refreshToken: hash,
+                  },
+                },
+              },
+            },
+          });
+
+          return {
+            accessToken,
+            refreshToken: newRefreshToken,
+            tokenId: foundToken.id,
+            accessTokenExpires: getAccessExpiry(),
+            user: {
+              id: user.id,
+              email: user.email,
+            },
+          };
+        }
+
+        //Probably a resused token here, flag as a hacked user and delete all session
+        // You can decide to do anything aditional here maybe send a mail or something
+        await this.prismaService.user.update({
+          where: {
+            id: decoded.sub,
+          },
+          data: {
+            token: {
+              deleteMany: {},
+            },
+          },
+        });
+      } catch (error) {
+        // valid but expired or not decodeable
+        console.log('', error);
+        throw new HttpException(
+          'Unauthorised valid but either expired or other reason ',
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+
+      throw new HttpException('Unauthorised ', HttpStatus.FORBIDDEN);
+    }
+
+    //console.log('not leeway');
+    //Token is valid and still in db , here we then remove from db and send new pairs of RF and AT
+
+    //We then filter out the current RT
+
+    //check if token as expired
+    try {
+      const decoded = await this.jwtService.verifyAsync(refreshToken, {
+        secret: this.configService.get('JWT_REFRESH_TOKEN_SECRET'),
+      });
+
+      
+      //Here RT is still valid we can go ahead to send new pairs of Tokens
       const { accessToken } = await this.getJwtAccessToken(user.id, user.email);
       const { refreshToken: newRefreshToken } = await this.getJwtRefreshToken(
         user.id,
         user?.email,
       );
 
-      //refresh token still valid return new one
-      const hashed = await argon.hash(newRefreshToken);
+      const hash = await argon.hash(newRefreshToken);
+      await this.prismaService.user.update({
+        where: {
+          id: user.id,
+        },
+        data: {
+          token: {
+            update: {
+              where: {
+                id: foundToken.id,
+              },
+              data: {
+                refreshToken: hash,
+              },
+            },
+          },
+        },
+      });
 
-      console.log('refresh token still valid');
-      await this.updateRefreshToken(user.id, [...newRefreshTokens, hashed]);
-
-      console.log(newRefreshToken, '\n', [...newRefreshTokens, hashed]);
       return {
         accessToken,
         refreshToken: newRefreshToken,
-        accessTokenExpires: Date.now() + ACCESS_TOKEN_EXPIRY,
+        tokenId: foundToken.id,
+        accessTokenExpires: getAccessExpiry(),
         user: {
           id: user.id,
           email: user.email,
         },
       };
     } catch (error) {
-      //expired
-      console.log('expired refresh token');
-      this.updateRefreshToken(user.id, [...newRefreshTokens]);
-      throw new HttpException('Unauthorised', HttpStatus.UNAUTHORIZED);
+      //expired RT, we can log out the user
+      //  this.updateRefreshToken(foundUser.id, [...newRefreshTokens]);
 
-      //throw new HttpException('Unauthorised', HttpStatus.UNAUTHORIZED);
+      throw new HttpException('Unauthorised', HttpStatus.UNAUTHORIZED);
+    }
+  }
+
+  async getUserIfRefreshTokenMatches4(
+    refreshToken: string,
+    tokenId: string,
+    userId: number,
+  ) {
+    const user = await this.getById(userId);
+    const foundToken = await this.prismaService.token.findUnique({
+      where: {
+        id: tokenId,
+      },
+    });
+
+    const isMatch = await argon.verify(foundToken.refreshToken, refreshToken);
+
+    if (!isMatch) {
+      //refresh token is valid but not in db
+      //re-use detection possible!!! delete all refresh tokens
+      try {
+        const decoded = this.jwtService.verify(refreshToken, {
+          secret: this.configService.get('JWT_REFRESH_TOKEN_SECRET'),
+        });
+
+        //console.log('re use detected'); Re use detected or race condition
+
+        const issuedAt = dayjs.unix(decoded.iat);
+        const diff = dayjs().diff(issuedAt, 'seconds');
+
+        console.log(diff);
+
+        if (diff < 60 * 1 * 2) {
+          //2 minute leeway allows refresh
+          const { accessToken } = await this.getJwtAccessToken(
+            user.id,
+            user.email,
+          );
+          const {
+            refreshToken: newRefreshToken,
+          } = await this.getJwtRefreshToken(user.id, user?.email);
+
+          const hash = await argon.hash(newRefreshToken);
+          await this.prismaService.user.update({
+            where: {
+              id: user.id,
+            },
+            data: {
+              token: {
+                update: {
+                  where: {
+                    id: foundToken.id,
+                  },
+                  data: {
+                    refreshToken: hash,
+                  },
+                },
+              },
+            },
+          });
+
+          return {
+            accessToken,
+            refreshToken: newRefreshToken,
+            tokenId: foundToken.id,
+            accessTokenExpires: getAccessExpiry(),
+            user: {
+              id: user.id,
+              email: user.email,
+            },
+          };
+        }
+
+        //Probably a resused token here, flag as a hacked user and delete all session
+        // You can decide to do anything aditional here maybe send a mail or something
+        await this.prismaService.user.update({
+          where: {
+            id: decoded.sub,
+          },
+          data: {
+            token: {
+              deleteMany: {},
+            },
+          },
+        });
+      } catch (error) {
+        // valid but expired or not decodeable
+        console.log('', error);
+        throw new HttpException(
+          'Unauthorised valid but either expired or other reason ',
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+
+      throw new HttpException('Unauthorised', HttpStatus.FORBIDDEN);
+    }
+
+    console.log('not leeway');
+    //Token is valid and still in db , here we then remove from db and send new pairs of RF and AT
+
+    //We then filter out the current RT
+
+    //check if token as expired
+    try {
+      const decoded = await this.jwtService.verifyAsync(refreshToken, {
+        secret: this.configService.get('JWT_REFRESH_TOKEN_SECRET'),
+      });
+
+      /*  const issuedAt = dayjs.unix(decoded.iat);
+
+      const diff = dayjs().diff(issuedAt, 'seconds');
+ */
+      //Here RT is still valid we can go ahead to send new pairs of Tokens
+      const { accessToken } = await this.getJwtAccessToken(user.id, user.email);
+      const { refreshToken: newRefreshToken } = await this.getJwtRefreshToken(
+        user.id,
+        user?.email,
+      );
+
+      const hash = await argon.hash(newRefreshToken);
+      await this.prismaService.user.update({
+        where: {
+          id: user.id,
+        },
+        data: {
+          token: {
+            update: {
+              where: {
+                id: foundToken.id,
+              },
+              data: {
+                refreshToken: hash,
+              },
+            },
+          },
+        },
+      });
+
+      return {
+        accessToken,
+        refreshToken: newRefreshToken,
+        tokenId: foundToken.id,
+        accessTokenExpires: getAccessExpiry(),
+        user: {
+          id: user.id,
+          email: user.email,
+        },
+      };
+    } catch (error) {
+      //expired RT, we can log out the user
+      //  this.updateRefreshToken(foundUser.id, [...newRefreshTokens]);
+
+      throw new HttpException('Unauthorised', HttpStatus.UNAUTHORIZED);
     }
   }
 
@@ -360,6 +871,7 @@ export class AuthService {
       },
     });
   }
+
   async getJwtAccessToken(
     sub: number,
     email?: string,
