@@ -9,7 +9,6 @@ import { UserService } from './user.service';
 import * as dayjs from 'dayjs';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { IRequestWithUser } from 'src/auth/interfaces/IRequestWithUser';
-import { UAParser } from 'ua-parser-js';
 
 @Controller('user')
 export class UserController {
@@ -28,21 +27,23 @@ export class UserController {
   @UseGuards(JwtAuthGuard)
   @Get('devices')
   async getDevices(@Req() request: IRequestWithUser) {
- /*    const parser = new UAParser(request.header('User-Agent'))
-    console.log(parser.getDevice(), parser.getBrowser() , parser.getOS()) */
+    //this.generateUserAgent(request.headers['user-agent'])
     return await this.prismaService.token.findMany({
-      where:{
-        userId:request.user.id
+      where: {
+        userId: request.user.id,
       },
-      select:{
-        browserInfo:true,
-        createdAt:true,
-      }
-    })
+      select: {
+        device: true,
+        appType:true,
+        createdAt: true,
+      },
+    });
   }
-
+  
   @Get('send-mail')
   refresh(@Req() request) {
     this.userService.example2();
   }
+  
+ 
 }

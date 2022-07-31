@@ -44,7 +44,7 @@ export class UserService {
     );
   }
 
-  async setCurrentRefreshToken(refreshToken: string, userId: number) {
+ /*  async setCurrentRefreshToken(refreshToken: string, userId: number) {
     const currentHashedRefreshToken = await argon.hash(refreshToken);
     await this.prismaService.user.update({
       where: {
@@ -56,7 +56,7 @@ export class UserService {
         }
       },
     });
-  }
+  } */
 
   public example2(): void {
     this.mailerService

@@ -38,65 +38,6 @@ export class AuthController {
     return 'v';
   }
 
-  @HttpCode(200)
-  @Post('log-in')
-  async logIn(
-    @Body() dto: AuthDto,
-    @Req() request: IRequestWithUser,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    const user = await this.prismaService.user.findUnique({
-      where: {
-        email: dto.email,
-      },
-    });
-
-    if (!user) {
-      throw new ForbiddenException('Credentials incorrect');
-    }
-
-    const isMatch = await argon.verify(user.password, dto.password);
-
-    if (!isMatch) {
-      throw new ForbiddenException('Credentilas incorrect');
-    }
-
-    const {
-      cookie: accessTokenCookie,
-      token: accesToken,
-    } = await this.authService.getCookieWithJwtAccessToken(user.id, user.email);
-
-    const {
-      cookie: refreshTokenCookie,
-      token: refreshToken,
-    } = this.authService.getCookieWithJwtRefreshToken(user.id, user.email);
-
-    //store refresh token to a store database
-    const currentHashedRefreshToken = await argon.hash(refreshToken);
-    await this.prismaService.user.update({
-      where: {
-        id: user.id,
-      },
-      data: {
-        refreshTokens: {
-          push: currentHashedRefreshToken,
-        },
-      },
-    });
-    request.res.setHeader('Set-Cookie', [
-      accessTokenCookie,
-      refreshTokenCookie,
-    ]);
-
-    res.cookie('test', accesToken);
-
-    /*   if (user.isTwoFactorAuthenticationEnabled) {
-      return;
-    } */
-
-    return { accesToken };
-  }
-
   @Post('sign-up') 
   signup(@Body() dto: AuthDto, @Req() request: Request) {
     return this.authService.signUp(dto, request);
