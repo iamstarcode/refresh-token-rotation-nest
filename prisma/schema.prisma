@@ -10,20 +10,18 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-
 }
 
 model User {
-  id                               Int        @id @default(autoincrement())
-  email                            String?    @unique
-  password                         String?
-  provider                         Provider[]
-  token                            Token[]
-  isTwoFactorAuthenticationEnabled String?
-  firstName                        String?
-  lastName                         String?
-  createdAt                        DateTime   @default(now())
-  updatedAt                        DateTime   @updatedAt
+  id        Int        @id @default(autoincrement())
+  email     String?    @unique
+  password  String?
+  firstName String?
+  lastName  String?
+  tokens    Token[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  providers Provider[]
 
   @@map("users")
 }
@@ -32,8 +30,8 @@ model Token {
   id           String   @id @default(uuid())
   userId       Int
   refreshToken String
-  device       String
-  appType      String
+  device       String?  @default("unkown device")
+  app          String?  @default("unkown app")
   expiresAt    DateTime
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -48,9 +46,8 @@ model Provider {
   provider_name String
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
-  User          User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId        Int?
 
   @@map("providers")
 }
-

@@ -24,10 +24,11 @@ export class JwtRefreshTokenStrategy extends PassportStrategy(
     const refreshToken = request.header('Authorization').split(' ')[1];
     const tokenId = request.header('Token-Id');
 
-    return this.authService.getUserIfRefreshTokenMatches3(
+    console.log('payload', payload);
+    return this.authService.getUserIfRefreshTokenMatches(
       refreshToken,
       tokenId,
-      payload.sub,
+      payload,
     );
   }
 }

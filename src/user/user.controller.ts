@@ -1,4 +1,4 @@
-import { User } from '.prisma/client';
+import { User } from '@prisma/client';
 import { Controller, Get, HttpStatus, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { request, Request } from 'express';
@@ -34,7 +34,7 @@ export class UserController {
       },
       select: {
         device: true,
-        appType:true,
+        app:true,
         createdAt: true,
       },
     });

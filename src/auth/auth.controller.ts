@@ -1,28 +1,22 @@
 import {
   Body,
   Controller,
-  ForbiddenException,
   Get,
   HttpCode,
   HttpException,
   HttpStatus,
   Post,
   Req,
-  Res,
   UseGuards,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { AuthDto } from './dto/auth.dto';
 import { IRequestWithUser } from './interfaces/IRequestWithUser';
 import { PrismaService } from 'src/prisma/prisma.service';
-import * as argon from 'argon2';
-import { Response, Request } from 'express';
+import { Request } from 'express';
 import JwtRefreshGuard from './guard/jwt-refresh.guard';
 import { AuthProviderDto } from './dto/auth-provider.dto';
 import { JwtAuthGuard } from './guard/jwt.guard';
-import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
-import { UAParser } from 'ua-parser-js';
 
 @Controller('auth')
 export class AuthController {
@@ -31,15 +25,13 @@ export class AuthController {
     private readonly prismaService: PrismaService,
   ) {}
 
-  //@UseGuards(LocalAuthenticationGuard)
-  //@ApiBody({ type: LogInDto })
   @Get('v')
   async v() {
     return 'v';
   }
 
-  @Post('sign-up') 
-  signup(@Body() dto: AuthDto, @Req() request: Request) {
+  @Post('sign-up')
+  signUp(@Body() dto: AuthDto, @Req() request: Request) {
     return this.authService.signUp(dto, request);
   }
 
@@ -63,15 +55,7 @@ export class AuthController {
   @HttpCode(200)
   async signOut(@Req() request: IRequestWithUser) {
     const tokenId = request.header('Token-Id');
-    try {
-      await this.prismaService.token.delete({
-        where: {
-          id: tokenId,
-        },
-      });
-    } catch (error) {
-      throw new HttpException('Bad Request', HttpStatus.BAD_REQUEST);
-    }
+    await this.authService.signOut(tokenId);
   }
 
   @UseGuards(JwtRefreshGuard)

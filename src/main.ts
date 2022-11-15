@@ -1,8 +1,8 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import * as csurf from 'csurf';
-var cookieParser = require('cookie-parser');
+import * as csurf from 'csurf'; //deprecated
+const cookieParser = require('cookie-parser');
 
 async function bootstrap() {
   const allowedOrigins = [

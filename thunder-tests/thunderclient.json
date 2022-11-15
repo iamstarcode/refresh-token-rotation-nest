@@ -1,0 +1,63 @@
+[
+  {
+    "_id": "9f53e2f5-b870-4cb6-84ef-10673160d2ca",
+    "colId": "e71da0e2-e559-44d8-99fc-b53e71acc436",
+    "containerId": "",
+    "name": "sign-up",
+    "url": "localhost:8000/auth/sign-up",
+    "method": "POST",
+    "sortNum": 10000,
+    "created": "2022-11-14T17:30:37.251Z",
+    "modified": "2022-11-14T17:31:39.796Z",
+    "headers": [],
+    "params": [],
+    "body": {
+      "type": "formencoded",
+      "raw": "",
+      "form": [
+        {
+          "name": "email",
+          "value": "iamstarcode@gmail.com"
+        },
+        {
+          "name": "password",
+          "value": "iamstarcode@gmail.com"
+        }
+      ]
+    },
+    "tests": []
+  },
+  {
+    "_id": "7926d882-0119-49b2-b406-8d2f2daace9e",
+    "colId": "e71da0e2-e559-44d8-99fc-b53e71acc436",
+    "containerId": "",
+    "name": "sign-in",
+    "url": "localhost:8000/auth/sign-in",
+    "method": "POST",
+    "sortNum": 20000,
+    "created": "2022-11-14T17:32:55.876Z",
+    "modified": "2022-11-14T17:35:04.852Z",
+    "headers": [
+      {
+        "name": "x-user-agent",
+        "value": "\"{ appType: 'Firefox', device: 'Linux x86_64' }\""
+      }
+    ],
+    "params": [],
+    "body": {
+      "type": "formencoded",
+      "raw": "",
+      "form": [
+        {
+          "name": "email",
+          "value": "iamstarcode@gmail.com"
+        },
+        {
+          "name": "password",
+          "value": "iamstarcode@gmail.com"
+        }
+      ]
+    },
+    "tests": []
+  }
+]
