@@ -15,7 +15,6 @@ export class JwtRefreshTokenStrategy extends PassportStrategy(
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       secretOrKey: configService.get('JWT_REFRESH_TOKEN_SECRET'),
-      ignoreExpiration: true,
       passReqToCallback: true,
     });
   }
@@ -24,7 +23,6 @@ export class JwtRefreshTokenStrategy extends PassportStrategy(
     const refreshToken = request.header('Authorization').split(' ')[1];
     const tokenId = request.header('Token-Id');
 
-    console.log('payload', payload);
     return this.authService.getUserIfRefreshTokenMatches(
       refreshToken,
       tokenId,

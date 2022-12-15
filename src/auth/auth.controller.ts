@@ -3,8 +3,6 @@ import {
   Controller,
   Get,
   HttpCode,
-  HttpException,
-  HttpStatus,
   Post,
   Req,
   UseGuards,
@@ -12,7 +10,6 @@ import {
 import { AuthService } from './auth.service';
 import { AuthDto } from './dto/auth.dto';
 import { IRequestWithUser } from './interfaces/IRequestWithUser';
-import { PrismaService } from 'src/prisma/prisma.service';
 import { Request } from 'express';
 import JwtRefreshGuard from './guard/jwt-refresh.guard';
 import { AuthProviderDto } from './dto/auth-provider.dto';
@@ -20,15 +17,7 @@ import { JwtAuthGuard } from './guard/jwt.guard';
 
 @Controller('auth')
 export class AuthController {
-  constructor(
-    private readonly authService: AuthService,
-    private readonly prismaService: PrismaService,
-  ) {}
-
-  @Get('v')
-  async v() {
-    return 'v';
-  }
+  constructor(private readonly authService: AuthService) {}
 
   @Post('sign-up')
   signUp(@Body() dto: AuthDto, @Req() request: Request) {
@@ -61,8 +50,7 @@ export class AuthController {
   @UseGuards(JwtRefreshGuard)
   @Get('refresh')
   async refresh(@Req() request: IRequestWithUser) {
-    //console.log(request.user)
-    //request.res.setHeader('Set-Cookie', accessToken); next-auth creates cookie no nned here
+    //request.res.setHeader('Set-Cookie', accessToken); next-auth creates cookie no need here
     return request.user;
   }
 }

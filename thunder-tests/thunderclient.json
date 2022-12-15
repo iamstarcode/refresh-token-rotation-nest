@@ -59,5 +59,28 @@
       ]
     },
     "tests": []
+  },
+  {
+    "_id": "331939c4-0dfd-49d1-b872-d44d458dd600",
+    "colId": "e71da0e2-e559-44d8-99fc-b53e71acc436",
+    "containerId": "",
+    "name": "sign-out",
+    "url": "localhost:8000/auth/sign-out",
+    "method": "POST",
+    "sortNum": 30000,
+    "created": "2022-12-14T11:18:01.417Z",
+    "modified": "2022-12-14T11:24:33.717Z",
+    "headers": [
+      {
+        "name": "Token-Id",
+        "value": "b6ea1b22-78fa-4768-8779-86dd500b6d2a"
+      }
+    ],
+    "params": [],
+    "auth": {
+      "type": "bearer",
+      "bearer": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsImVtYWlsIjoiaWFtc3RhcmNvZGVAZ21haWwuY29tIiwiaXNTZWNvbmRGYWN0b3JBdXRoZW50aWNhdGVkIjpmYWxzZSwiaWF0IjoxNjcxMDE3MDE4LCJleHAiOjE2NzEwMzUwMTh9._Ev5FQzMlYHXedJahg1MuomicuOMEtEAMltQDbmxXmU"
+    },
+    "tests": []
   }
 ]
