@@ -11,13 +11,10 @@ import { PrismaClientKnownRequestError } from '@prisma/client/runtime';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { ITokenPayload } from './interfaces/ITokenPayload';
-import { AuthProviderDto } from './dto/auth-provider.dto';
 
 import * as dayjs from 'dayjs';
 
 import { User } from '@prisma/client';
-import { Request } from 'express';
-import { UAParser } from 'ua-parser-js';
 
 const JWT_ACCESS_TOKEN_EXPIRATION_TIME = '5s';
 const JWT_REFRESH_TOKEN_EXPIRATION_TIME = '1d';
@@ -33,8 +30,7 @@ export class AuthService {
     private configService: ConfigService,
   ) {}
 
-  async handeleSigin(user: User, request: Request) {
-    const userAgent: any = JSON.parse(request.header('x-user-agent'));
+  async handeleSigin(user: User) {
     const { refreshToken } = await this.getJwtRefreshToken(
       user.id,
       user?.email,
@@ -47,8 +43,6 @@ export class AuthService {
         data: {
           expiresAt: getRefreshExpiry(),
           refreshToken: hash,
-          device: userAgent.device,
-          app: userAgent.appType,
           user: {
             connect: {
               id: user.id,
@@ -72,7 +66,7 @@ export class AuthService {
     }
   }
 
-  async signUp(dto: AuthDto, request: Request) {
+  async signUp(dto: AuthDto) {
     const password = await argon.hash(dto.password);
     try {
       const user = await this.prismaService.user.create({
@@ -82,9 +76,7 @@ export class AuthService {
         },
       });
 
-      const userAgent = this.generateUserAgent(request.headers['user-agent']);
-      request.headers['x-user-agent'] = JSON.stringify(userAgent);
-      return await this.handeleSigin(user, request);
+      return await this.handeleSigin(user);
     } catch (err) {
       if (err instanceof PrismaClientKnownRequestError) {
         if (err.code === 'P2002') {
@@ -95,7 +87,7 @@ export class AuthService {
     }
   }
 
-  async signIn(dto: AuthDto, request: Request) {
+  async signIn(dto: AuthDto) {
     //find a user
     const user = await this.prismaService.user.findUnique({
       where: {
@@ -122,7 +114,7 @@ export class AuthService {
       throw new ForbiddenException('Credentilas incorrect');
     }
 
-    return await this.handeleSigin(user, request);
+    return await this.handeleSigin(user);
   }
 
   async signOut(tokenId: string) {
@@ -134,58 +126,6 @@ export class AuthService {
       });
     } catch (error) {
       throw new HttpException('Bad Request', HttpStatus.BAD_REQUEST);
-    }
-  }
-
-  async signInWithOAuth(dto: AuthProviderDto) {
-    const account = await this.prismaService.provider.findFirst({
-      where: {
-        provider_id: dto.id,
-        provider_name: dto.provider,
-      },
-    });
-
-    if (account) {
-      const user = await this.prismaService.user.findFirst({
-        where: {
-          id: account.userId,
-        },
-      });
-      return user;
-    } else {
-      let user: any = {};
-      user = await this.prismaService.user.findFirst({
-        where: {
-          email: dto.email,
-        },
-      });
-      if (!user) {
-        //here i create a new user
-        const user = await this.prismaService.user.create({
-          data: {
-            email: dto.email,
-            lastName: dto.lastName,
-            firstName: dto.firstName,
-            providers: {
-              create: {
-                provider_id: dto.id,
-                provider_name: dto.provider,
-              },
-            },
-          },
-        });
-
-        return user;
-      } else {
-        await this.prismaService.provider.create({
-          data: {
-            provider_id: dto.id,
-            provider_name: dto.provider,
-            userId: user?.id,
-          },
-        });
-        return user;
-      }
     }
   }
 
@@ -240,36 +180,6 @@ export class AuthService {
     }
   }
 
-  async getById(id: number) {
-    const user = await this.prismaService.user.findFirst({
-      where: {
-        id,
-      },
-    });
-    if (user) {
-      return user;
-    }
-    throw new HttpException(
-      'User with this id does not exist',
-      HttpStatus.NOT_FOUND,
-    );
-  }
-
-  async getByEmail(email: string) {
-    const user = await this.prismaService.user.findFirst({
-      where: {
-        email,
-      },
-    });
-    if (user) {
-      return user;
-    }
-    throw new HttpException(
-      'User with this id does not exist',
-      HttpStatus.NOT_FOUND,
-    );
-  }
-
   public async getJwtRefreshToken(sub: number, email: string) {
     const payload: ITokenPayload = { sub, email };
     const refreshToken = await this.jwtService.signAsync(payload, {
@@ -294,23 +204,6 @@ export class AuthService {
     return {
       accessToken,
     };
-  }
-
-  private generateUserAgent(userAgent: string) {
-    const device: any = {};
-    const parser = new UAParser(userAgent);
-    if (parser.getDevice().model == undefined) {
-      //web browser
-      device.appType = parser.getBrowser().name;
-      device.device = parser.getOS().name + ' ' + parser.getOS().version;
-    } else {
-      // a mobile web browser
-      device.device = `${parser.getDevice().vendor}  ${
-        parser.getDevice().model
-      }`;
-      device.appType = parser.getBrowser().name;
-    }
-    return device;
   }
 
   private async generateTokens(payload: ITokenPayload, tokenId: string) {
