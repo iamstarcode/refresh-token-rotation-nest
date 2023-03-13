@@ -2,7 +2,7 @@ services:
   db:
     image: postgres
     ports:
-      - 5432:5432
+      - 54329:5432
     restart: always
     environment:
       POSTGRES_DB: nest

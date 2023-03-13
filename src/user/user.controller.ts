@@ -10,10 +10,10 @@ export class UserController {
   @Get('me')
   getMe(@GetUser() user: any) {
     return (
-      'User with Id: ' +
+      'User-Id: ' +
       user?.userId +
       ' requested @ ' +
-      dayjs(Date.now()).format('hh:s a')
+      dayjs(Date.now()).format('hh:m:s a')
     );
   }
 }
